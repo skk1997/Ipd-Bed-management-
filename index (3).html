@@ -1,0 +1,188 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hospital Bed Management</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 10px;
+    }
+    .bed {
+      width: 100px;
+      height: 50px;
+      margin: 5px;
+      display: inline-block;
+      text-align: center;
+      line-height: 50px;
+      color: white;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    .occupied {
+      background-color: green;
+    }
+    .vacant {
+      background-color: red;
+    }
+    #bedContainer {
+      display: flex;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    #patientForm {
+      display: none;
+      position: fixed;
+      top: 20%;
+      left: 50%;
+      transform: translate(-50%, -20%);
+      background: white;
+      padding: 20px;
+      border: 1px solid #ccc;
+      z-index: 10;
+    }
+    table, th, td {
+      border: 1px solid black;
+      border-collapse: collapse;
+      padding: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Hospital Bed Management (1st & 3rd Floor)</h2>
+  <div id="bedContainer"></div>  <div id="patientForm">
+    <h3>Enter Patient Details</h3>
+    <input type="hidden" id="currentBed" />
+    <label>Name: <input type="text" id="name" /></label><br />
+    <label>Age: <input type="number" id="age" /></label><br />
+    <label>Gender: <input type="text" id="gender" /></label><br />
+    <label>Diagnosis: <input type="text" id="diagnosis" /></label><br />
+    <label>Plan: <input type="text" id="plan" /></label><br />
+    <label>Doctor: <input type="text" id="doctor" /></label><br /><br />
+    <button onclick="savePatient()">Save</button>
+    <button onclick="closeForm()">Cancel</button>
+  </div>  <h3>Admitted Patients</h3>
+  <table id="patientTable">
+    <tr>
+      <th>Bed</th><th>Name</th><th>Age</th><th>Gender</th><th>Diagnosis</th><th>Plan</th><th>Doctor</th><th>Discharge</th>
+    </tr>
+  </table>  <h3>Discharged Patients</h3>
+  <table id="dischargedTable">
+    <tr>
+      <th>Bed</th><th>Name</th><th>Age</th><th>Gender</th><th>Diagnosis</th><th>Plan</th><th>Doctor</th><th>Clear</th>
+    </tr>
+  </table>  <script>
+    const beds = {};
+    const bedContainer = document.getElementById('bedContainer');
+
+    function createBeds() {
+      let allBeds = [];
+      for (let i = 1; i <= 50; i++) allBeds.push(`1F-N${i}`);
+      for (let i = 1; i <= 8; i++) allBeds.push(`1F-U${i}`);
+      for (let i = 1; i <= 50; i++) allBeds.push(`3F-${i}`);
+
+      allBeds.forEach(bedId => {
+        const bedDiv = document.createElement('div');
+        bedDiv.className = 'bed vacant';
+        bedDiv.id = bedId;
+        bedDiv.innerText = bedId;
+        bedDiv.onclick = () => openForm(bedId);
+        bedContainer.appendChild(bedDiv);
+        beds[bedId] = null;
+      });
+    }
+
+    function openForm(bedId) {
+      document.getElementById('currentBed').value = bedId;
+      const patient = beds[bedId];
+      document.getElementById('name').value = patient?.name || '';
+      document.getElementById('age').value = patient?.age || '';
+      document.getElementById('gender').value = patient?.gender || '';
+      document.getElementById('diagnosis').value = patient?.diagnosis || '';
+      document.getElementById('plan').value = patient?.plan || '';
+      document.getElementById('doctor').value = patient?.doctor || '';
+      document.getElementById('patientForm').style.display = 'block';
+    }
+
+    function closeForm() {
+      document.getElementById('patientForm').style.display = 'none';
+    }
+
+    function savePatient() {
+      const bedId = document.getElementById('currentBed').value;
+      const patient = {
+        id: Date.now(),
+        name: document.getElementById('name').value,
+        age: document.getElementById('age').value,
+        gender: document.getElementById('gender').value,
+        diagnosis: document.getElementById('diagnosis').value,
+        plan: document.getElementById('plan').value,
+        doctor: document.getElementById('doctor').value
+      };
+
+      beds[bedId] = patient;
+      document.getElementById(bedId).className = 'bed occupied';
+      updateTable();
+      postToGoogleSheet(bedId, patient, 'Admitted');
+      closeForm();
+    }
+
+    function dischargePatient(bedId) {
+      const patient = beds[bedId];
+      if (!patient) return;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${bedId}</td><td>${patient.name}</td><td>${patient.age}</td><td>${patient.gender}</td><td>${patient.diagnosis}</td><td>${patient.plan}</td><td>${patient.doctor}</td><td><button onclick="clearDischargedRow(this)">Clear</button></td>`;
+      document.getElementById('dischargedTable').appendChild(row);
+
+      postToGoogleSheet(bedId, patient, 'Discharged');
+
+      beds[bedId] = null;
+      document.getElementById(bedId).className = 'bed vacant';
+      updateTable();
+    }
+
+    function clearDischargedRow(button) {
+      const row = button.parentNode.parentNode;
+      row.remove();
+    }
+
+    function updateTable() {
+      const table = document.getElementById('patientTable');
+      table.innerHTML = '<tr><th>Bed</th><th>Name</th><th>Age</th><th>Gender</th><th>Diagnosis</th><th>Plan</th><th>Doctor</th><th>Discharge</th></tr>';
+
+      for (const bed in beds) {
+        const patient = beds[bed];
+        if (patient) {
+          const row = document.createElement('tr');
+          row.innerHTML = `<td>${bed}</td><td>${patient.name}</td><td>${patient.age}</td><td>${patient.gender}</td><td>${patient.diagnosis}</td><td>${patient.plan}</td><td>${patient.doctor}</td><td><button onclick="dischargePatient('${bed}')">Discharge</button></td>`;
+          table.appendChild(row);
+        }
+      }
+    }
+
+    function postToGoogleSheet(bed, patient, status = 'Admitted') {
+      const url = 'https://docs.google.com/spreadsheets/d/1gOxhjeewsUmfAOqUFfY7bsw-LK7LOrv2/edit?usp=drivesdk&ouid=109095950543467448374&rtpof=true&sd=true'; // Replace with your deployed Google Apps Script URL
+      fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          bed: bed,
+          id: patient.id || '',
+          name: patient.name,
+          age: patient.age,
+          gender: patient.gender,
+          diagnosis: patient.diagnosis,
+          plan: patient.plan,
+          doctor: patient.doctor,
+          status: status
+        })
+      });
+    }
+
+    createBeds();
+  </script></body>
+</html>
